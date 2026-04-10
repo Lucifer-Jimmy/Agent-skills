@@ -1,0 +1,46 @@
+# 黑盒测试流程 (Reconnaissance & Probing)
+
+在黑盒测试中，保持创造性与敏锐的直觉至关重要。随时记录稍纵即逝的灵感，不要局限于常规套路，大胆跳出框架去尝试各种边界情况与异常输入。
+
+## 1. 确定数据输入位置 (Surface Mapping)
+
+尝试确认技术栈，全面挖掘所有用户可控的输入面，并将这些潜在的突破口汇总，为下一步测试提供靶标。
+
+- **显性传参：** 拦截并分析所有 HTTP 请求与响应，解析 HTML 和 JS 代码，提取 API 路由及 GET/POST 参数特征（例如 `/search.php?id=1`）。
+- **隐性传参：** 若常规表单和 URL 参数未发现异常，需立即拓宽攻击面。重点测试 HTTP Headers（如 `X-Forwarded-For`、`User-Agent`、`Referer`）、Cookies、以及通过 Fuzzing 寻找隐藏参数或调试接口。
+
+## 2. 初始探测与 Fuzzing (Initial Probing)
+
+针对收集到的所有输入点，构造并注入轻量级探测 Payload，敏锐观察系统的响应差异：
+
+- 报错与转义探测：
+  - 注入单引号 `'` 或其他特殊符号，观察是否触发 SQL 语法错误或引发非预期回显。
+  - 注入反斜杠 `\`，观察是否吃掉了原有的闭合引号导致报错（如 `?id=1\`）。
+- 布尔逻辑探测：注入恒真与恒假条件（如 `1' AND '1'='1` vs `1' AND '1'='2`，或 `1' or 1=1-- `），通过页面内容返回的差异（True/False）判断是否存在盲注。
+- 时间盲注探测：注入延时指令（如 `' AND SLEEP(5)-- `），观察 HTTP 响应时间是否出现与参数匹配的显著延迟。
+- 算术运算探测（数字型推断）：针对疑似数字型参数，注入数学运算（如 `?id=2*2`）。若返回结果与输入 `?id=4` 完全一致，可基本坐实数字型注入。
+- 联合查询探测：尝试拼接 `' UNION SELECT NULL-- `，初步探测页面是否具备多行数据回显能力及列数特征。
+- RESTful 路由探测：针对伪静态或 RESTful 接口（例如 `/api/user/1`），尝试破坏其路由结构（如修改为 `/api/user/1'` 或 `/api/user/2-1`），观察后端路由解析与数据库查询的连带反应。
+- 数据结构异常探测：强制改变预期的数据类型，例如将字符串参数转换为数组（`?id[]=1`）。某些后端语言（如 PHP）在处理数组拼接时极易抛出 Warning 甚至直接泄露底层 SQL 语句。
+
+## 3. 状态记录与注入点确认 (State Documentation)
+
+- 汇总与更新：梳理上述探测中表现出异常的输入点（报错、延时、布尔差异等）。将确认或高度疑似存在注入的参数、路由、注入类型等关键上下文，严格按照[文档](../SKILL.md)中的示例规范，序列化并更新至 `sql-injection-state.json` 中。这将作为后续开展深度 Bypass 与漏洞利用的核心状态锚点。
+
+## 4. 判断技术栈和数据库类型
+
+- 根据我们访问的路径和服务端响应，来判断服务的技术栈和使用的数据库。
+- 可以从报错信息判断。
+- 也可以从语法兼容性探测，例如 LIMIT -> MySQL / PostgreSQL / SQLite，TOP -> SQL Server，ROWNUM -> Oracle 等等。
+- 还可以从版本函数判断，例如构造以下语句：
+  - MySQL：`' AND @@version LIKE '%mysql%'--`
+  - PostgreSQL：`' AND version() LIKE '%PostgreSQL%'--`
+  - MSSQL：`' AND @@version LIKE '%Microsoft%'--`
+  - Oracle：`' AND (SELECT banner FROM v$version WHERE rownum=1) LIKE '%Oracle%'--`
+  - MongoDB: 尝试将参数从字符串变为对象。例如将 `?id=1` 改为 `?id[$ne]=2`（Not Equal）。如果页面返回了 `id=1` 的内容，说明后端可能使用了 MongoDB 处理 JSON/BSON 对象
+  - 还可以根据该数据库的其他特性去进行判断
+- 做出正确判断后，要及时更新 `sql-injection-state.json` 文件
+
+## 5. 过滤与防御机制审查
+
+- 尝试 fuzz SQL 注入中可能出现的关键字，根据服务端不同响应来判断是否过滤相应字符，必须要确定该字符被过滤了，才能按照要求更新 `sql-injection-state.json` 文件。
