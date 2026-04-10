@@ -2,10 +2,18 @@
 
 作为代码白盒审计专家，必须秉持严谨客观的态度，杜绝主观臆断。任何 SQL 注入漏洞的确认，都必须经过严格的代码逻辑推导与数据流验证，确凿证明用户输入能够直接或间接控制目标参数，并最终改变 SQL 语句的原有语义。
 
+建议最终以“证据链”形式输出结论，而不是只给 payload。
+
 ## 1. 环境与技术栈识别 (Context & Tech Stack)
 - 编程语言：通过项目文件后缀及目录结构，精准识别后端语言（如 PHP、Python、Java、Node.js、Go、C#、Ruby 等）。
 - 数据库系统：审计数据库连接配置及驱动，确认底层数据库类型（如 MySQL、PostgreSQL、SQLite、MSSQL、Oracle 等），以确定特定数据库的 SQL 语法特性。
 - 基建辅助分析：综合分析依赖文件（如 `pom.xml`、`package.json`、`requirements.txt`）、配置文件或 `docker-compose.yml`，快速掌握项目框架与组件版本。
+
+输出时建议记录：
+
+- 语言 / 框架
+- 数据库类型
+- 主要数据库访问层（ORM / query builder / raw SQL）
 
 ## 2. 锚定 SQL 注入风险点 (Sink Location)
 全局检索数据库交互的关键函数与 SQL 关键字，寻找潜在的动态拼接点：
@@ -19,6 +27,13 @@
 - Ruby on Rails：`find_by_sql`, `connection.execute`, `.where("...")` (非参数化操作), `.order(`
 - 以及其他存在注入的地方
 - 状态同步：将所有发现的动态 SQL 构造位置及对应的风险变量进行标记，并详细更新至 `sql-injection-state.json` 文件中。
+
+对每个候选点，建议至少记录：
+
+- `source`: 用户输入位置，格式为 `file_path:line`
+- `sink`: SQL 执行位置，格式为 `file_path:line`
+- `query_pattern`: 拼接方式或原始 SQL 片段
+- `parameterized`: `true` / `false` / `unknown`
 
 ## 3. 数据流追踪与污点分析 (Source to Sink Analysis)
 对已定位的风险点进行逆向溯源或正向追踪，严谨验证变量是否真正可控：
